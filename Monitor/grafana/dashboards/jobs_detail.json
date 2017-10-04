@@ -82,11 +82,19 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(condor_job_state_running)",
+              "expr": "sum(condor_job_state_running) by (id)",
               "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "amount of jobs running on pool",
+              "legendFormat": "cluster: {{id}}",
               "refId": "A",
+              "step": 30
+            },
+            {
+              "expr": "sum(condor_job_state_running) ",
+              "format": "time_series",
+              "intervalFactor": 2,
+              "legendFormat": "Total",
+              "refId": "B",
               "step": 30
             }
           ],
@@ -194,7 +202,7 @@
           "tableColumn": "",
           "targets": [
             {
-              "expr": "condor_job_state_running{cluster=~'$cluster'}",
+              "expr": "condor_job_state_running{id=~'$cluster'}",
               "format": "time_series",
               "intervalFactor": 2,
               "refId": "A",
@@ -270,7 +278,7 @@
           "tableColumn": "",
           "targets": [
             {
-              "expr": "condor_job_state_idle{cluster=~'$cluster'}",
+              "expr": "condor_job_state_idle{id=~'$cluster'}",
               "format": "time_series",
               "intervalFactor": 2,
               "refId": "A",
@@ -346,7 +354,7 @@
           "tableColumn": "",
           "targets": [
             {
-              "expr": "condor_job_state_held{cluster=~'$cluster'}",
+              "expr": "condor_job_state_held{id=~'$cluster'}",
               "format": "time_series",
               "intervalFactor": 2,
               "refId": "A",
@@ -422,7 +430,7 @@
           "tableColumn": "",
           "targets": [
             {
-              "expr": "condor_job_state_completed{cluster=~'$cluster'}",
+              "expr": "condor_job_state_completed{id=~'$cluster'}",
               "format": "time_series",
               "intervalFactor": 2,
               "refId": "A",
@@ -498,7 +506,7 @@
           "tableColumn": "",
           "targets": [
             {
-              "expr": "condor_job_avg_running_time_seconds{cluster=~'$cluster'}",
+              "expr": "condor_job_avg_running_time_seconds{id=~'$cluster'}",
               "format": "time_series",
               "intervalFactor": 2,
               "refId": "A",
@@ -542,7 +550,7 @@
         "multi": false,
         "name": "cluster",
         "options": [],
-        "query": "query_result(sum(condor_job_state_idle) without (submitter, instance, job))",
+        "query": "query_result(sum(condor_job_state_idle) without (submitter, instance, job, cluster))",
         "refresh": 1,
         "regex": "/\"(.*)\"/",
         "sort": 0,
@@ -585,5 +593,5 @@
   },
   "timezone": "",
   "title": "Jobs Detail",
-  "version": 5
+  "version": 1
 }

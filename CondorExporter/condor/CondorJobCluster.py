@@ -5,6 +5,9 @@ class CondorJobCluster:
         self.submitter = submitter
         self.jobs = {}
 
+    def global_id(self):
+        return "%d@%s" % (self.cluster_id, self.submitter)
+
     def is_active(self):
         for job in self.jobs.itervalues():
             if job.state != "Completed":
@@ -26,10 +29,10 @@ class CondorJobCluster:
             elif job.state == "Completed":
                 count_completed += 1
 
-        state_metric.idle.add_metric([self.submitter, str(self.cluster_id)], count_idle)
-        state_metric.held.add_metric([self.submitter, str(self.cluster_id)], count_held)
-        state_metric.running.add_metric([self.submitter, str(self.cluster_id)], count_running)
-        state_metric.completed.add_metric([self.submitter, str(self.cluster_id)], count_completed)
+        state_metric.idle.add_metric([self.submitter, str(self.cluster_id), self.global_id()], count_idle)
+        state_metric.held.add_metric([self.submitter, str(self.cluster_id), self.global_id()], count_held)
+        state_metric.running.add_metric([self.submitter, str(self.cluster_id), self.global_id()], count_running)
+        state_metric.completed.add_metric([self.submitter, str(self.cluster_id), self.global_id()], count_completed)
 
     def update_job_running_time(self, runtime_metric):
         runtime_sum = 0.0
