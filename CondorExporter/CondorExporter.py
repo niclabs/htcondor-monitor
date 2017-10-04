@@ -91,10 +91,11 @@ class CondorCollector(object):
             slot_id = slot.get("SlotID", None)
             activity = slot.get("Activity", None)
             state = slot.get("State", None)
-            address = slot.get("MyAddress", "")
+            address = parse_address(slot.get("MyAddress", ""))
             if name not in self.machines:
-                self.machines[name] = Machine(name, parse_address(address))
+                self.machines[name] = Machine(name, address)
             current_machine = self.machines[name]
+            current_machine.address = address
             if slot_id not in current_machine.slots:
                 current_machine.slots[slot_id] = Slot(slot_id)
             current_slot = current_machine.slots[slot_id]
