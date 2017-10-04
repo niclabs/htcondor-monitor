@@ -17,11 +17,10 @@ from metrics.SlotStateMetric import SlotStateMetric
 from metrics.JobStateMetric import JobStateMetric
 from metrics.JobRunningTimeMetric import JobRunningTimeMetric
 
-schedd = htcondor.Schedd()
+coll = htcondor.Collector()
 
 
 def query_all_slots(projection=[]):
-    coll = htcondor.Collector()
     all_submitters_query = coll.query(htcondor.AdTypes.Startd, projection=projection)
     return all_submitters_query
 
@@ -43,22 +42,27 @@ def parse_submitter(user):
 
 
 def get_all_submitters():
-    return [1]
+    projection = ["Name", "MyAddress"]
+    all_submitters_query = coll.query(htcondor.AdTypes.Submitter, projection=projection)
+    schedds = []
+    for submitter in all_submitters_query:
+        schedds.append(htcondor.Schedd(submitter))
+    return schedds
 
 
-def get_cluster_history(cluster):
+def get_cluster_history(schedd, cluster):
     requirements = 'Machine =?= %s && ClusterId == %d' % (cluster.submitter, cluster.cluster_id)
     projection = ["Owner", "ExitStatus", "ProcId", "JobStatus", "RemoteSlotID", "RemoteHost", "RemoteWallClockTime"]
     jobs = schedd.history(requirements, projection)
     for job in jobs:
         job_id = job.get("ProcId", -1)
         status = job.get("JobStatus", "")
-        time = job.get("RemoteWallClockTime", 0)
+        runtime = job.get("RemoteWallClockTime", 0)
         if job not in cluster.jobs:
             cluster.jobs[job_id] = CondorJob(job_id)
         current_job = cluster.jobs[job_id]
         current_job.state = parse_job_status(status)
-        current_job.running_time = time
+        current_job.running_time = runtime
 
 
 def parse_job_status(status_code):
@@ -111,7 +115,7 @@ class CondorCollector(object):
             machines.update_activity(activity_metrics)
             machines.update_state(state_metrics)
 
-    def get_jobs_from_submitter(self, submitter):
+    def get_jobs_from_schedd(self, schedd):
         projection = ["Owner", "User", "ExitStatus", "Cmd", "ClusterId", "ProcId",
                       "GlobalJobId", "JobStatus", "RemoteSlotID", "RemoteHost"]
         # requirements = 'Machine =?= %s' % submitter.name
@@ -129,16 +133,16 @@ class CondorCollector(object):
             if self.clusters[cluster_id].jobs[job_id].state == "Running":
                 self.clusters[cluster_id].jobs[job_id].execute_machine = job.get("RemoteHost", "")
         for cluster in self.clusters.itervalues():
-            get_cluster_history(cluster)
+            get_cluster_history(schedd, cluster)
         return [cluster for cluster in self.clusters.itervalues()]
 
     def collect_job_metrics(self, job_state_metrics, job_time_metrics):
         for cluster, ttl in self.inactive_clusters:
             cluster.update_job_state(job_state_metrics)
             cluster.update_job_running_time(job_time_metrics)
-        submitters = get_all_submitters()
-        for submitter in submitters:
-            for job in self.get_jobs_from_submitter(submitter):
+        submitter_schedds = get_all_submitters()
+        for submitter in submitter_schedds:
+            for job in self.get_jobs_from_schedd(submitter):
                 job.update_job_state(job_state_metrics)
                 job.update_job_running_time(job_time_metrics)
         # Remove inactive cluster from main list, add them to inactive cluster list
