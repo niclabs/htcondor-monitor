@@ -45,4 +45,4 @@ class CondorJobCluster:
             runtime_avg = 0
         else:
             runtime_avg = runtime_sum / runtime_count
-        runtime_metric.time.add_metric([self.submitter, str(self.cluster_id)], runtime_avg)
+        runtime_metric.time.add_metric([self.submitter, str(self.cluster_id), self.global_id()], runtime_avg)
