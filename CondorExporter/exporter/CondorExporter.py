@@ -1,28 +1,23 @@
 #!/usr/bin/python
 
+import argparse
 import time
-
-from prometheus_client import start_http_server
-from prometheus_client.core import REGISTRY
+from wsgiref.simple_server import make_server
 
 import htcondor
 import re
+from exporter.condor import CondorJobCluster
+from exporter.condor import Machine
+from exporter.condor import Slot
+from exporter.condor import CondorJob
+from exporter.metrics.JobRunningTimeMetric import JobRunningTimeMetric
+from exporter.metrics.JobStateMetric import JobStateMetric
+from exporter.metrics.SlotStateMetric import SlotStateMetric
+from exporter.metrics.SlotActivityMetric import SlotActivityMetric
 
-from condor.CondorMachine import Machine
-from condor.CondorSlot import Slot
-from condor.CondorJobCluster import CondorJobCluster
-from condor.CondorJob import CondorJob
-from metrics.SlotActivityMetric import SlotActivityMetric
-from metrics.SlotStateMetric import SlotStateMetric
-from metrics.JobStateMetric import JobStateMetric
-from metrics.JobRunningTimeMetric import JobRunningTimeMetric
+from prometheus_client import make_wsgi_app
+from prometheus_client.core import REGISTRY
 
-coll = htcondor.Collector()
-
-
-def query_all_slots(projection=[]):
-    all_submitters_query = coll.query(htcondor.AdTypes.Startd, projection=projection)
-    return all_submitters_query
 
 
 def parse_address(address):
@@ -39,15 +34,6 @@ def parse_submitter(user):
     if regex_match is not None:
         return regex_match.group(1)
     return ""
-
-
-def get_all_submitters():
-    projection = ["Name", "MyAddress"]
-    all_submitters_query = coll.query(htcondor.AdTypes.Submitter, projection=projection)
-    schedds = []
-    for submitter in all_submitters_query:
-        schedds.append(htcondor.Schedd(submitter))
-    return schedds
 
 
 def get_cluster_history(schedd, cluster):
@@ -79,17 +65,30 @@ def parse_job_status(status_code):
 
 class CondorCollector(object):
 
-    def __init__(self):
+    def __init__(self, pool=None):
         self.machines = {}
         self.clusters = {}
         self.inactive_clusters = []
+        self.coll = htcondor.Collector(pool)
+
+    def query_all_slots(self, projection=[]):
+        all_submitters_query = self.coll.query(htcondor.AdTypes.Startd, projection=projection)
+        return all_submitters_query
+
+    def get_all_submitters(self):
+        projection = ["Name", "MyAddress"]
+        all_submitters_query = self.coll.query(htcondor.AdTypes.Submitter, projection=projection)
+        schedds = []
+        for submitter in all_submitters_query:
+            schedds.append(htcondor.Schedd(submitter))
+        return schedds
 
     def get_machine_list(self):
-        return [machine for machine in self.machines.itervalues()]
+        return [machine for machine in iter(self.machines.values())]
 
     def query_all_machines(self):
         projection = ["Machine", "State", "Name", "SlotID", "Activity", "MyAddress"]
-        slots_info = query_all_slots(projection=projection)
+        slots_info = self.query_all_slots(projection=projection)
         for slot in slots_info:
             name = slot.get("Machine", None)
             slot_id = slot.get("SlotID", None)
@@ -108,7 +107,7 @@ class CondorCollector(object):
         return self.get_machine_list()
 
     def collect_machine_metrics(self, activity_metrics, state_metrics):
-        for machine in self.machines.itervalues():
+        for machine in iter(self.machines.values()):
             machine.reset_slots_metrics()
         machines = self.query_all_machines()
         for machines in machines:
@@ -132,21 +131,21 @@ class CondorCollector(object):
             self.clusters[cluster_id].jobs[job_id].state = parse_job_status(status)
             if self.clusters[cluster_id].jobs[job_id].state == "Running":
                 self.clusters[cluster_id].jobs[job_id].execute_machine = job.get("RemoteHost", "")
-        for cluster in self.clusters.itervalues():
+        for cluster in iter(self.clusters.values()):
             get_cluster_history(schedd, cluster)
-        return [cluster for cluster in self.clusters.itervalues()]
+        return [cluster for cluster in iter(self.clusters.values())]
 
     def collect_job_metrics(self, job_state_metrics, job_time_metrics):
         for cluster, ttl in self.inactive_clusters:
             cluster.update_job_state(job_state_metrics)
             cluster.update_job_running_time(job_time_metrics)
-        submitter_schedds = get_all_submitters()
+        submitter_schedds = self.get_all_submitters()
         for submitter in submitter_schedds:
             for job in self.get_jobs_from_schedd(submitter):
                 job.update_job_state(job_state_metrics)
                 job.update_job_running_time(job_time_metrics)
         # Remove inactive cluster from main list, add them to inactive cluster list
-        for cluster in self.clusters.itervalues():
+        for cluster in iter(self.clusters.values()):
             if not cluster.is_active():
                 self.inactive_clusters.append((cluster, 6))
         # Decrease time to live for all inactive clusters and remove old inactive clusters
@@ -173,9 +172,24 @@ class CondorCollector(object):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run condor exporter to expose metrics for prometheus consumption")
+    parser.add_argument('-p', '--port', type=int, default=9118, required=False,
+                        help='Specify a port to be used. Defaults to 9118')
+    parser.add_argument('-a', '--host', type=str, default='localhost', required=False,
+                        help='Host address to listen on. Defaults to localhost')
+    parser.add_argument('-c', '--collector', type=str, default='', required=False,
+                        help='Condor collector address. Defaults to localhost')
+    args = parser.parse_args()
+    port = args.port
+    address = args.host
+    collector_address = args.collector
+
     try:
-        REGISTRY.register(CondorCollector())
-        start_http_server(9118)
+        REGISTRY.register(CondorCollector(collector_address))
+        app = make_wsgi_app()
+        httpd = make_server(host=address, port=port, app=app)
+        httpd.serve_forever()
+        print("Exporter listening on %s:%d" % (address, port))
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
