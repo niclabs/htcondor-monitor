@@ -1,4 +1,5 @@
 
 class Config:
-
-    COLLECTOR_ADDRESS = '172.30.65.178'
+    # Insert condor pool collector address here,
+    # or leave blank to use local collector
+    COLLECTOR_ADDRESS = ''
