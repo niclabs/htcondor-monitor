@@ -2,7 +2,6 @@
 
 import argparse
 import time
-from wsgiref.simple_server import make_server
 
 import htcondor
 import re
@@ -15,7 +14,7 @@ from exporter.metrics.JobStateMetric import JobStateMetric
 from exporter.metrics.SlotStateMetric import SlotStateMetric
 from exporter.metrics.SlotActivityMetric import SlotActivityMetric
 
-from prometheus_client import make_wsgi_app
+from prometheus_client import start_wsgi_server
 from prometheus_client.core import REGISTRY
 
 
@@ -185,10 +184,11 @@ def main():
     collector_address = args.collector
 
     try:
+        from exporter.wsgi import wsgi_collector
+        REGISTRY.unregister(wsgi_collector)
         REGISTRY.register(CondorCollector(collector_address))
-        app = make_wsgi_app()
-        httpd = make_server(host=address, port=port, app=app)
-        httpd.serve_forever()
+
+        start_wsgi_server(addr=address, port=port)
         print("Exporter listening on %s:%d" % (address, port))
         while True:
             time.sleep(1)
