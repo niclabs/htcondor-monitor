@@ -117,7 +117,10 @@ class CondorCollector(object):
         projection = ["Owner", "User", "ExitStatus", "Cmd", "ClusterId", "ProcId",
                       "GlobalJobId", "JobStatus", "RemoteSlotID", "RemoteHost"]
         # requirements = 'Machine =?= %s' % submitter.name
-        jobs_from_submitter = schedd.xquery(projection=projection)
+        try:
+            jobs_from_submitter = schedd.xquery(projection=projection)
+        except RuntimeError:
+            return []
         for job in jobs_from_submitter:
             cluster_id = job.get("ClusterId", None)
             job_id = job.get("ProcId", None)
